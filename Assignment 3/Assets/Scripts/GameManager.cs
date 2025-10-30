@@ -1,9 +1,7 @@
 ﻿using Assignment_2.Classes;
-using Lab_6.Classes;
-using System;
 using UnityEngine;
 
-namespace Lab_6.Classes
+namespace Assignment_2.Classes
 {
     public class GameManager : MonoBehaviour
     {
@@ -13,12 +11,18 @@ namespace Lab_6.Classes
         private int currentY = 1;
         private System.Random rand = new System.Random();
 
-        // Unity object representations
-        private GameObject[,] roomVisuals;
-        private GameObject playerVisual;
+        [Header("Map Size")]
+        [SerializeField] private int rows = 5;
+        [SerializeField] private int columns = 5;
 
-        private readonly int rows = 5;
-        private readonly int cols = 5;
+        [Header("Room Distribution")]
+        [SerializeField] private int treasureRoomCount = 3;
+        [SerializeField] private int encounterRoomCount = 3;
+
+        [Header("References")]
+        [SerializeField] private MapManager mapManager; // Drag the MapManager GameObject in Inspector
+
+        private GameObject playerVisual;
 
         void Start()
         {
@@ -28,83 +32,70 @@ namespace Lab_6.Classes
 
         private void StartGame()
         {
-            Console.WriteLine("Enter your hero's name: ");
-            string name = "Hero"; // placeholder since Unity console can't take input
+            string name = "Hero";
             player = new Player(name);
+
             InitializeMap();
-            VisualizeMap();
+
+            // Delegate visualization to MapManager
+            mapManager.CreateMap(map, rows, columns);
+
+            // Spawn player
+            SpawnPlayer();
         }
 
-        //Initialize the logical map
         private void InitializeMap()
         {
-            map = new Room[rows, cols];
+            map = new Room[rows, columns];
 
-            // fill all with empty
             for (int x = 0; x < rows; x++)
-                for (int y = 0; y < cols; y++)
+                for (int y = 0; y < columns; y++)
                     map[x, y] = new EmptyRoom();
 
-            // random positions
-            var coords = new (int x, int y)[rows * cols];
+            // randomize room positions
+            var coords = new (int x, int y)[rows * columns];
             int idx = 0;
             for (int x = 0; x < rows; x++)
-                for (int y = 0; y < cols; y++)
+                for (int y = 0; y < columns; y++)
                     coords[idx++] = (x, y);
 
-            // shuffle coords
             for (int i = coords.Length - 1; i > 0; i--)
             {
                 int j = rand.Next(i + 1);
-                var temp = coords[i];
-                coords[i] = coords[j];
-                coords[j] = temp;
+                (coords[i], coords[j]) = (coords[j], coords[i]);
             }
 
-            // place one treasure and one encounter
-            map[coords[0].x, coords[0].y] = new TreasureRoom();
-            map[coords[1].x, coords[1].y] = new EncounterRoom();
+            int totalRooms = rows * columns;
+            treasureRoomCount = Mathf.Clamp(treasureRoomCount, 0, totalRooms);
+            encounterRoomCount = Mathf.Clamp(encounterRoomCount, 0, totalRooms - treasureRoomCount);
+
+            int index = 0;
+
+            // place treasure rooms
+            for (int i = 0; i < treasureRoomCount; i++)
+            {
+                var c = coords[index++];
+                map[c.x, c.y] = new TreasureRoom();
+            }
+
+            // place encounter rooms
+            for (int i = 0; i < encounterRoomCount; i++)
+            {
+                var c = coords[index++];
+                map[c.x, c.y] = new EncounterRoom();
+            }
         }
 
-        // --- Build the visual grid of cubes and a player ---
-        private void VisualizeMap()
+        private void SpawnPlayer()
         {
-            roomVisuals = new GameObject[rows, cols];
-            float spacing = 2f;
-
-            for (int x = 0; x < rows; x++)
-            {
-                for (int y = 0; y < cols; y++)
-                {
-                    // create cube for room
-                    GameObject roomObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                    roomObj.transform.position = new Vector3(x * spacing, 0, y * spacing);
-
-                    // color by type
-                    Renderer r = roomObj.GetComponent<Renderer>();
-                    if (map[x, y] is TreasureRoom)
-                        r.material.color = Color.yellow;
-                    else if (map[x, y] is EncounterRoom)
-                        r.material.color = Color.red;
-                    else
-                        r.material.color = Color.gray;
-
-                    roomObj.name = $"Room_{x}_{y}";
-                    roomVisuals[x, y] = roomObj;
-                }
-            }
-
-            // create player visual with a sphere
             playerVisual = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             playerVisual.transform.localScale = new Vector3(0.8f, 0.8f, 0.8f);
             playerVisual.GetComponent<Renderer>().material.color = Color.cyan;
             playerVisual.name = "Player";
 
-            // offset Y-axis
-            playerVisual.transform.position = new Vector3(currentX * spacing, 1f, currentY * spacing);
+            playerVisual.transform.position = new Vector3(currentX * 2f, 1f, currentY * 2f);
         }
 
-        //Simple input controls using number keys 1-4
         void Update()
         {
             if (Input.GetKeyDown(KeyCode.W)) MovePlayer(-1, 0); // North
@@ -113,13 +104,12 @@ namespace Lab_6.Classes
             if (Input.GetKeyDown(KeyCode.A)) MovePlayer(0, -1); // West
         }
 
-        //Move player and update their visual position
         private void MovePlayer(int dx, int dy)
         {
             int nx = currentX + dx;
             int ny = currentY + dy;
 
-            if (nx < 0 || ny < 0 || nx >= rows || ny >= cols)
+            if (nx < 0 || ny < 0 || nx >= rows || ny >= columns)
             {
                 Debug.Log("You can’t move that way!");
                 return;
@@ -128,8 +118,7 @@ namespace Lab_6.Classes
             currentX = nx;
             currentY = ny;
 
-            float spacing = 2f;
-            playerVisual.transform.position = new Vector3(currentX * spacing, 1f, currentY * spacing);
+            playerVisual.transform.position = new Vector3(currentX * 2f, 1f, currentY * 2f);
             Debug.Log($"Moved to room [{currentX},{currentY}] - {map[currentX, currentY].RoomDescription()}");
         }
     }
