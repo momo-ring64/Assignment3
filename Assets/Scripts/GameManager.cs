@@ -1,125 +1,188 @@
-﻿using Assignment_2.Classes;
-using UnityEngine;
+﻿using UnityEngine;
 
-namespace Assignment_2.Classes
+namespace Assignment_3.Classes
 {
     public class GameManager : MonoBehaviour
     {
-        private Room[,] map;
-        private Player player;
-        private int currentX = 1;
-        private int currentY = 1;
-        private System.Random rand = new System.Random();
-
-        [Header("Map Size")]
-        [SerializeField] private int rows = 5;
-        [SerializeField] private int columns = 5;
-
-        [Header("Room Distribution")]
-        [SerializeField] private int treasureRoomCount = 3;
-        [SerializeField] private int encounterRoomCount = 3;
-
         [Header("References")]
-        [SerializeField] private MapManager mapManager; // Drag the MapManager GameObject in Inspector
+        public MapManager mapManager;
+        public GameObject playerPrefab;
 
-        private GameObject playerVisual;
+        public Player player;
+        public RoomBase[,] map;
+
+        private GameObject playerObj;
+        private int xPos = 0;
+        private int yPos = 0;
+
+        private Enemy activeEnemy = null;
+        private bool inCombat = false;
+
+        [Header("Player Positioning")]
+        public Vector3 playerOffset = Vector3.up;
 
         void Start()
         {
-            Debug.Log("=== DUNGEON CRAWLER START ===");
-            StartGame();
-        }
+            Debug.Log("=== GAME START ===");
 
-        private void StartGame()
-        {
-            string name = "Hero";
-            player = new Player(name);
+            player = new Player("Hero");
+            map = mapManager.GenerateMap();
 
-            InitializeMap();
-
-            // Delegate visualization to MapManager
-            mapManager.CreateMap(map, rows, columns);
-
-            // Spawn player
             SpawnPlayer();
-        }
-
-        private void InitializeMap()
-        {
-            map = new Room[rows, columns];
-
-            for (int x = 0; x < rows; x++)
-                for (int y = 0; y < columns; y++)
-                    map[x, y] = new EmptyRoom();
-
-            // randomize room positions
-            var coords = new (int x, int y)[rows * columns];
-            int idx = 0;
-            for (int x = 0; x < rows; x++)
-                for (int y = 0; y < columns; y++)
-                    coords[idx++] = (x, y);
-
-            for (int i = coords.Length - 1; i > 0; i--)
-            {
-                int j = rand.Next(i + 1);
-                (coords[i], coords[j]) = (coords[j], coords[i]);
-            }
-
-            int totalRooms = rows * columns;
-            treasureRoomCount = Mathf.Clamp(treasureRoomCount, 0, totalRooms);
-            encounterRoomCount = Mathf.Clamp(encounterRoomCount, 0, totalRooms - treasureRoomCount);
-
-            int index = 0;
-
-            // place treasure rooms
-            for (int i = 0; i < treasureRoomCount; i++)
-            {
-                var c = coords[index++];
-                map[c.x, c.y] = new TreasureRoom();
-            }
-
-            // place encounter rooms
-            for (int i = 0; i < encounterRoomCount; i++)
-            {
-                var c = coords[index++];
-                map[c.x, c.y] = new EncounterRoom();
-            }
+            EnterCurrentRoom();
         }
 
         private void SpawnPlayer()
         {
-            playerVisual = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            playerVisual.transform.localScale = new Vector3(0.8f, 0.8f, 0.8f);
-            playerVisual.GetComponent<Renderer>().material.color = Color.cyan;
-            playerVisual.name = "Player";
+            xPos = 0;
+            yPos = 0;
 
-            playerVisual.transform.position = new Vector3(currentX * 2f, 1f, currentY * 2f);
+            playerObj = Instantiate(
+                playerPrefab,
+                mapManager.GetRoomWorldPosition(xPos, yPos) + playerOffset,
+                Quaternion.identity
+            );
         }
 
         void Update()
         {
-            if (Input.GetKeyDown(KeyCode.W)) MovePlayer(-1, 0); // North
-            if (Input.GetKeyDown(KeyCode.S)) MovePlayer(1, 0);  // South
-            if (Input.GetKeyDown(KeyCode.D)) MovePlayer(0, 1);  // East
-            if (Input.GetKeyDown(KeyCode.A)) MovePlayer(0, -1); // West
-        }
-
-        private void MovePlayer(int dx, int dy)
-        {
-            int nx = currentX + dx;
-            int ny = currentY + dy;
-
-            if (nx < 0 || ny < 0 || nx >= rows || ny >= columns)
+            if (inCombat)
             {
-                Debug.Log("You can’t move that way!");
+                CombatInput();
                 return;
             }
 
-            currentX = nx;
-            currentY = ny;
+            RoomBase room = mapManager.GetRoom(xPos, yPos);
 
-            playerVisual.transform.position = new Vector3(currentX * 2f, 1f, currentY * 2f);
-            Debug.Log($"Moved to room [{currentX},{currentY}] - {map[currentX, currentY].RoomDescription()}");
+            // treasure search
+            if (room is TreasureRoom tr && Input.GetKeyDown(KeyCode.E))
+                tr.Search(player);
+
+            // always available
+            if (Input.GetKeyDown(KeyCode.E)) PrintInventory();
+            if (Input.GetKeyDown(KeyCode.Alpha1)) SelectWeapon(0);
+            if (Input.GetKeyDown(KeyCode.Alpha2)) SelectWeapon(1);
+            if (Input.GetKeyDown(KeyCode.Alpha3)) SelectWeapon(2);
+
+            if (Input.GetKeyDown(KeyCode.C)) player.ConsumePotion();
+
+            MovementUpdate();
         }
+
+        private void PrintInventory()
+        {
+            Debug.Log("=== WEAPONS ===");
+            var w = player.GetWeapons();
+            for (int i = 0; i < w.Count; i++)
+                Debug.Log($"{i + 1}. {w[i].Name} ({w[i].DiceCount}d{w[i].DiceSides})");
+
+            Debug.Log("=== POTIONS ===");
+            var p = player.GetPotions();
+            for (int i = 0; i < p.Count; i++)
+                Debug.Log($"{i + 1}. {p[i].Name} ({p[i].DiceCount}d{p[i].DiceSides})");
+        }
+
+        private void SelectWeapon(int index)
+        {
+            if (player.GetWeapons().Count > index)
+            {
+                player.SelectedWeaponIndex = index;
+                Debug.Log($"Selected weapon: {player.GetSelectedWeapon().Name}");
+            }
+        }
+
+        // Movement
+        private void MovementUpdate()
+        {
+            if (Input.GetKeyDown(KeyCode.W)) TryMove(-1, 0);
+            if (Input.GetKeyDown(KeyCode.S)) TryMove(1, 0);
+            if (Input.GetKeyDown(KeyCode.A)) TryMove(0, -1);
+            if (Input.GetKeyDown(KeyCode.D)) TryMove(0, 1);
+        }
+
+        private void TryMove(int dx, int dy)
+        {
+            int nx = xPos + dx;
+            int ny = yPos + dy;
+
+            if (mapManager.GetRoom(nx, ny) == null)
+            {
+                Debug.Log("You can't move that way!");
+                return;
+            }
+
+            xPos = nx;
+            yPos = ny;
+
+            playerObj.transform.position =
+                mapManager.GetRoomWorldPosition(xPos, yPos) + playerOffset;
+
+            EnterCurrentRoom();
+        }
+
+        private void EnterCurrentRoom()
+        {
+            RoomBase room = mapManager.GetRoom(xPos, yPos);
+            room.EnterRoom(player);
+
+            if (room is CombatRoom)
+                StartCombat();
+        }
+
+       
+        // combat System
+    
+        private void StartCombat()
+        {
+            activeEnemy = new Enemy("Goblin", 12);
+            inCombat = true;
+
+            Debug.Log($"A {activeEnemy.Name} appears! HP: {activeEnemy.HitPoints}");
+            PrintInventory();
+            Debug.Log("Select a weapon (1–3), then press F to attack.");
+        }
+
+        private void CombatInput()
+        {
+            // attack
+            if (Input.GetKeyDown(KeyCode.F))
+            {
+                Weapon weapon = player.GetSelectedWeapon();
+
+                int dmg = (weapon != null)
+                    ? weapon.RollDamage()
+                    : Random.Range(1, 4);   // bare-handed attack
+
+                activeEnemy.HitPoints -= dmg;
+                Debug.Log($"You hit for {dmg}! Enemy HP: {activeEnemy.HitPoints}");
+
+                if (activeEnemy.HitPoints <= 0)
+                {
+                    Debug.Log("You defeated the enemy!");
+                    inCombat = false;
+                    return;
+                }
+
+                // enemy counterattack
+                int eDmg = activeEnemy.RollAttack();
+                player.ReceiveDamage(eDmg);
+
+                if (player.HitPoints <= 0)
+                {
+                    Debug.Log("YOU DIED.");
+                    inCombat = false;
+                }
+            }
+
+            // use potion
+            if (Input.GetKeyDown(KeyCode.Q))
+                player.ConsumePotion();
+
+            // weapon selection during combat
+            if (Input.GetKeyDown(KeyCode.Alpha1)) SelectWeapon(0);
+            if (Input.GetKeyDown(KeyCode.Alpha2)) SelectWeapon(1);
+            if (Input.GetKeyDown(KeyCode.Alpha3)) SelectWeapon(2);
+        }
+
     }
 }

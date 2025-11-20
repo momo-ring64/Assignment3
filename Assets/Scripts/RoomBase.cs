@@ -1,28 +1,15 @@
 using UnityEngine;
 
-public class RoomBase : MonoBehaviour
+namespace Assignment_3.Classes
 {
-    private RoomBase _north;
-    private RoomBase _east;
-    private RoomBase _south;
-    private RoomBase _west;
-
-    [Header("Doorways")]
-    [SerializeField] private GameObject NorthDoorway, EastDoorway, SouthDoorway, WestDoorway;
-
-    public void SetRooms(RoomBase roomNorth, RoomBase roomEast, RoomBase roomSouth, RoomBase roomWest)
+    public abstract class RoomBase : MonoBehaviour
     {
-        _north = roomNorth;
-        NorthDoorway.SetActive(_north == null);
+        public abstract string RoomDescription();
 
-        _east = roomEast;
-        EastDoorway.SetActive(_east  == null);
-
-        _south = roomSouth;
-        SouthDoorway.SetActive(_south == null);
-
-        _west = roomWest;
-        WestDoorway.SetActive(_west == null);
+        public virtual void EnterRoom(Player player)
+        {
+            Debug.Log(RoomDescription());
+        }
     }
-   
 }
+    

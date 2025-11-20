@@ -1,18 +1,14 @@
-﻿using System;
+﻿using UnityEngine;
 
-namespace Assignment_2.Classes
+namespace Assignment_3.Classes
 {
-    // item base class: abstraction for all item types
     public abstract class Item
     {
-        public string Name { get; protected set; }
+        public string Name { get; private set; }
 
         protected Item(string name)
         {
             Name = name;
         }
-
-        // use the item in a context; returns a brief result message
-        public abstract string Use(Player user);
     }
 }
