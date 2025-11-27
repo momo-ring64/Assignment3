@@ -4,19 +4,24 @@ namespace Assignment_3.Classes
 {
     public class CombatRoom : RoomBase
     {
-        private Enemy enemy;
+        public bool cleared = false;
 
-        private void Start()
+        public override string RoomDescription()
         {
-            enemy = new Enemy("Goblin", 10);
-        }
+            if (cleared)
+                return "The remains of your battle lie still. The room is quiet.";
 
-        public override string RoomDescription() => "A goblin attacks you!";
+            return "A goblin ambushes you!";
+        }
 
         public override void EnterRoom(Player player)
         {
             base.EnterRoom(player);
-            Debug.Log("Press F to attack the goblin.");
+
+            if (!cleared)
+                Debug.Log("Press F to fight!");
+            else
+                Debug.Log("This room has been cleared.");
         }
     }
 }
