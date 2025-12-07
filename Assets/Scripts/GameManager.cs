@@ -1,4 +1,6 @@
 ﻿using UnityEngine;
+using UnityEngine.SceneManagement;
+
 
 namespace Assignment_3.Classes
 {
@@ -10,6 +12,15 @@ namespace Assignment_3.Classes
 
         public Player player;
         public RoomBase[,] map;
+        private bool gameOver = false;
+
+        //cameras
+        private Camera aliveCamera;
+        private Camera deadCamera;
+        private Camera winCamera;
+
+
+
 
         private GameObject playerObj;
         private int xPos = 0;
@@ -42,10 +53,32 @@ namespace Assignment_3.Classes
                 mapManager.GetRoomWorldPosition(xPos, yPos) + playerOffset,
                 Quaternion.identity
             );
+
+            // Correct camera assignment
+            aliveCamera = playerObj.transform.Find("AliveCamera")?.GetComponent<Camera>();
+            deadCamera = playerObj.transform.Find("DeadCamera")?.GetComponent<Camera>();
+            winCamera = playerObj.transform.Find("WinCamera")?.GetComponent<Camera>();
+
+            if (aliveCamera == null || deadCamera == null || winCamera == null)
+            {
+                Debug.LogError("One or more cameras missing! Player prefab must include AliveCamera, DeadCamera, WinCamera.");
+                return;
+            }
+
+            // Initial camera states
+            aliveCamera.enabled = true;
+            deadCamera.enabled = false;
+            winCamera.enabled = false;
+
         }
+
+
 
         void Update()
         {
+            if (gameOver)
+                return; // NO INPUT WHEN DEAD
+
             if (inCombat)
             {
                 CombatInput();
@@ -59,15 +92,38 @@ namespace Assignment_3.Classes
                 tr.Search(player);
 
             // always available
-            if (Input.GetKeyDown(KeyCode.E)) PrintInventory();
+            if (Input.GetKeyDown(KeyCode.I)) PrintInventory();
             if (Input.GetKeyDown(KeyCode.Alpha1)) SelectWeapon(0);
             if (Input.GetKeyDown(KeyCode.Alpha2)) SelectWeapon(1);
             if (Input.GetKeyDown(KeyCode.Alpha3)) SelectWeapon(2);
-
-            if (Input.GetKeyDown(KeyCode.C)) player.ConsumePotion();
+            if (Input.GetKeyDown(KeyCode.P)) player.ConsumePotion();
 
             MovementUpdate();
         }
+
+        private void PlayerDied()
+        {
+            inCombat = false;
+            gameOver = true;
+
+            // SWITCH CAMERAS PROPERLY
+            if (aliveCamera != null)
+            {
+                aliveCamera.enabled = false;
+                aliveCamera.gameObject.SetActive(false);
+            }
+
+            if (deadCamera != null)
+            {
+                deadCamera.gameObject.SetActive(true);
+                deadCamera.enabled = true;
+            }
+
+            Debug.Log("YOU DIED.");
+        }
+
+
+
 
         private void PrintInventory()
         {
@@ -120,20 +176,81 @@ namespace Assignment_3.Classes
             EnterCurrentRoom();
         }
 
+        private void TriggerWinState()
+        {
+            Debug.Log("YOU WIN!");
+
+            inCombat = false;
+            gameOver = true;
+
+            // disable alive camera
+            if (aliveCamera != null)
+            {
+                aliveCamera.enabled = false;
+                aliveCamera.gameObject.SetActive(false);
+            }
+
+            // disable dead cam just in case
+            if (deadCamera != null)
+            {
+                deadCamera.enabled = false;
+                deadCamera.gameObject.SetActive(false);
+            }
+
+            // enable win cam
+            if (winCamera != null)
+            {
+                winCamera.gameObject.SetActive(true);
+                winCamera.enabled = true;
+            }
+
+            // disable input/dead camera UI etc.
+        }
+
+        private void CheckWinCondition()
+        {
+            // If you're already dead, never win
+            if (gameOver)
+                return;
+
+            int totalRooms = map.GetLength(0) * map.GetLength(1);
+            int visited = 0;
+
+            foreach (var room in map)
+            {
+                if (room != null && room.visited)
+                    visited++;
+            }
+
+            if (visited >= totalRooms)
+            {
+                TriggerWinState();
+            }
+        }
+
+
         private void EnterCurrentRoom()
         {
             RoomBase room = mapManager.GetRoom(xPos, yPos);
             room.EnterRoom(player);
 
-            if (room is CombatRoom)
-                StartCombat();
+            if (room is CombatRoom combatRoom)
+            {
+                if (!combatRoom.cleared)
+                    StartCombat(combatRoom);
+            }
+            CheckWinCondition();
+
         }
 
-       
+
+
         // combat System
-    
-        private void StartCombat()
+
+        private CombatRoom currentCombatRoom;
+        private void StartCombat(CombatRoom room)
         {
+            currentCombatRoom = room;
             activeEnemy = new Enemy("Goblin", 12);
             inCombat = true;
 
@@ -141,6 +258,7 @@ namespace Assignment_3.Classes
             PrintInventory();
             Debug.Log("Select a weapon (1–3), then press F to attack.");
         }
+
 
         private void CombatInput()
         {
@@ -159,9 +277,12 @@ namespace Assignment_3.Classes
                 if (activeEnemy.HitPoints <= 0)
                 {
                     Debug.Log("You defeated the enemy!");
+                    currentCombatRoom.cleared = true;   // <--- prevent respawn
                     inCombat = false;
+                    activeEnemy = null;
                     return;
                 }
+
 
                 // enemy counterattack
                 int eDmg = activeEnemy.RollAttack();
@@ -169,9 +290,10 @@ namespace Assignment_3.Classes
 
                 if (player.HitPoints <= 0)
                 {
-                    Debug.Log("YOU DIED.");
-                    inCombat = false;
+                    PlayerDied();
+                    return;
                 }
+
             }
 
             // use potion
@@ -183,6 +305,30 @@ namespace Assignment_3.Classes
             if (Input.GetKeyDown(KeyCode.Alpha2)) SelectWeapon(1);
             if (Input.GetKeyDown(KeyCode.Alpha3)) SelectWeapon(2);
         }
+
+        //ui functions
+        public void TryAgain()
+        {
+            Debug.Log("Restarting game...");
+            SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+        }
+
+
+
+
+        public void QuitGame()
+        {
+            Debug.Log("Quit pressed.");
+
+            // Works only in build
+            Application.Quit();
+
+#if UNITY_EDITOR
+            // In editor — just log
+            Debug.Log("QuitGame() called – Application.Quit() only works in a build.");
+#endif
+        }
+
 
     }
 }
